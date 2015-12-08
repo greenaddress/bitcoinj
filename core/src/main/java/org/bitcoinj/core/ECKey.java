@@ -17,6 +17,7 @@
 
 package org.bitcoinj.core;
 
+import org.bitcoin.NativeSecp256k1Util;
 import org.bitcoinj.crypto.*;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
@@ -635,6 +636,15 @@ public class ECKey implements EncryptableItem, Serializable {
         return sign(input, null);
     }
 
+    public byte[] signSchnorr(Sha256Hash input) {
+        try {
+            return NativeSecp256k1.signSchnorr(
+                    input.getBytes(), priv.toByteArray());
+        } catch (NativeSecp256k1Util.AssertFailException e) {
+            throw new RuntimeException();
+        }
+    }
+
     /**
      * If this global variable is set to true, sign() creates a dummy signature and verify() always returns true.
      * This is intended to help accelerate unit tests that do a lot of signing/verifying, which in the debugger
@@ -692,9 +702,6 @@ public class ECKey implements EncryptableItem, Serializable {
         if (FAKE_SIGNATURES)
             return true;
 
-        if (NativeSecp256k1.enabled)
-            return NativeSecp256k1.verify(data, signature.encodeToDER(), pub);
-
         ECDSASigner signer = new ECDSASigner();
         ECPublicKeyParameters params = new ECPublicKeyParameters(CURVE.getCurve().decodePoint(pub), CURVE);
         signer.init(false, params);
@@ -717,8 +724,6 @@ public class ECKey implements EncryptableItem, Serializable {
      * @param pub       The public key bytes to use.
      */
     public static boolean verify(byte[] data, byte[] signature, byte[] pub) {
-        if (NativeSecp256k1.enabled)
-            return NativeSecp256k1.verify(data, signature, pub);
         return verify(data, ECDSASignature.decodeFromDER(signature), pub);
     }
 
