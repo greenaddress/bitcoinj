@@ -134,9 +134,9 @@ public class NativeSecp256k1 {
         return sigArr;
     }
 
-    public static byte[] signSchnorr(byte[] data, byte[] sec) throws AssertFailException{
+    public static byte[] signSchnorr(byte[] data, byte[] sec) throws AssertFailException {
         while (sec.length > 32 && sec[0] == 0) {
-            sec = Arrays.copyOfRange(data, 1, data.length);
+            sec = Arrays.copyOfRange(sec, 1, sec.length);
         }
         Preconditions.checkArgument(data.length == 32 && sec.length <= 32);
 
