@@ -540,39 +540,38 @@ public class NativeSecp256k1 {
      * @param pubkey byte array of public key used in exponentiaion
      */
     //TODO createECDHSecret()
-    public static byte[] createECDHSecret(byte[] pubkey, byte[] msg32) throws AssertFailException{
-/*
-        Preconditions.checkArgument(msg32.length == 32);
+    public static byte[] createECDHSecret(byte[] seckey, byte[] pubkey) throws AssertFailException{
+        while (seckey.length > 32 && seckey[0] == 0) {
+            seckey = Arrays.copyOfRange(seckey, 1, seckey.length);
+        }
+
+        Preconditions.checkArgument(seckey.length <= 32 && pubkey.length == 33);
 
         ByteBuffer byteBuff = nativeECDSABuffer.get();
-        if (byteBuff == null) {
-            byteBuff = ByteBuffer.allocateDirect(pubkeys.length * 65);
+        if (byteBuff == null || byteBuff.capacity() < 32+33) {
+            byteBuff = ByteBuffer.allocateDirect(32+33);
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
         byteBuff.rewind();
+        byteBuff.put(seckey);
         byteBuff.put(pubkey);
 
         byte[][] retByteArray;
         r.lock();
         try {
-          retByteArray = secp256k1_ecdsa_recover(byteBuff,Secp256k1Context.getContext(), pubkey.length);
+          retByteArray = secp256k1_ecdh(byteBuff, Secp256k1Context.getContext());
         } finally {
           r.unlock();
         }
 
-        byte[] pubArr = retByteArray[0];
+        byte[] resArr = retByteArray[0];
+        int retVal = new BigInteger(new byte[] { retByteArray[1][0] }).intValue();
 
-        int pubLen = (byte) new BigInteger(new byte[] { retByteArray[1][0] }).intValue() & 0xFF;
-        int retVal = new BigInteger(new byte[] { retByteArray[1][1] }).intValue();
+        assertEquals(resArr.length, 32, "Got bad result length." );
+        assertEquals(retVal, 1, "Failed return value check.");
 
-        assertEquals(pubArr.length, pubLen, "Got bad pubkey length." );
-
-        assertEquals(retVal,1, "Failed return value check.");
-
-        return pubArr;
-*/
-  return new byte[0];
+        return resArr;
     }
 
     /**
@@ -614,7 +613,7 @@ public class NativeSecp256k1 {
 
         return pubArr;
 */
-  return new byte[0];
+        return new byte[0];
     }
 
     /**
@@ -627,7 +626,7 @@ public class NativeSecp256k1 {
     public static byte[] recoverPubkey(byte[] pubkey, byte[] msg32) throws AssertFailException{
 
 
-  return new byte[0];
+        return new byte[0];
 /*
         Preconditions.checkArgument(msg32.length == 32);
 
@@ -701,7 +700,7 @@ public class NativeSecp256k1 {
 
         return pubArr;
 */
-  return new byte[0];
+        return new byte[0];
     }
 
     /**
@@ -723,10 +722,52 @@ public class NativeSecp256k1 {
 
         w.lock();
         try {
-          return secp256k1_context_randomize(byteBuff, Secp256k1Context.getContext()) == 1;
+            return secp256k1_context_randomize(byteBuff, Secp256k1Context.getContext()) == 1;
         } finally {
-          w.unlock();
+            w.unlock();
         }
+    }
+
+    public static RewindResult rangeProofRewind(byte[] nonce, byte[] commitment, byte[] rangeProof) throws AssertFailException {
+        Preconditions.checkArgument(nonce.length == 32 && commitment.length == 33 && rangeProof.length < 10000);
+        ByteBuffer byteBuff = nativeECDSABuffer.get();
+        int reqLen = nonce.length + commitment.length + rangeProof.length;
+        if (byteBuff == null || byteBuff.capacity() < reqLen) {
+            byteBuff = ByteBuffer.allocateDirect(reqLen);
+            byteBuff.order(ByteOrder.nativeOrder());
+            nativeECDSABuffer.set(byteBuff);
+        }
+
+        byteBuff.rewind();
+        byteBuff.put(nonce);
+        byteBuff.put(commitment);
+        byteBuff.put(rangeProof);
+
+        byte[][] retByteArray;
+        retByteArray = secp256k1_rangeproof_rewind(
+                byteBuff,
+                Secp256k1Context.getContext(),
+                rangeProof.length
+        );
+
+        // int msgLen = new BigInteger(new byte[] { retByteArray[2][0] }).intValue();
+        int retVal = new BigInteger(new byte[] { retByteArray[2][1] }).intValue();
+
+        assertEquals(retVal, 1, "Failed return value check.");
+
+        if (ByteOrder.nativeOrder().equals(ByteOrder.LITTLE_ENDIAN)) {
+            // BigInteger needs big-endian
+            for (int i = 0; i < retByteArray[1].length/2; ++i) {
+                byte t = retByteArray[1][i];
+                retByteArray[1][i] = retByteArray[1][retByteArray[1].length - i - 1];
+                retByteArray[1][retByteArray[1].length - i - 1] = t;
+            }
+        }
+
+        return new RewindResult(
+                retByteArray[0],
+                new BigInteger(retByteArray[1]).longValue()
+        );
     }
 
     private static native long secp256k1_ctx_clone(long context);
@@ -765,4 +806,9 @@ public class NativeSecp256k1 {
     private static native byte[][] secp256k1_ec_pubkey_parse(ByteBuffer byteBuff, long context, int inputLen);
 
     private static native long secp256k1_ecdsa_pubkey_combine(ByteBuffer byteBuff, long context, int keys);
+
+    private static native byte[][] secp256k1_ecdh(ByteBuffer byteBuff, long context);
+
+    private static native byte[][] secp256k1_rangeproof_rewind(ByteBuffer byteBuff, long context, int rangeProofLen);
+
 }

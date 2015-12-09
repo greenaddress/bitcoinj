@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.*;
+import java.math.BigInteger;
 import java.util.*;
 
 import static org.bitcoinj.core.Utils.*;
@@ -103,6 +104,8 @@ public class Transaction extends ChildMessage implements Serializable {
     private long version;
     private ArrayList<TransactionInput> inputs;
     private ArrayList<TransactionOutput> outputs;
+
+    private BigInteger fee;
 
     private long lockTime;
 
@@ -561,6 +564,7 @@ public class Transaction extends ChildMessage implements Serializable {
             optimalEncodingMessageSize += TransactionOutPoint.MESSAGE_LENGTH + VarInt.sizeOf(scriptLen) + scriptLen + 4;
             cursor += scriptLen + 4;
         }
+        fee = readUint64();
         // Now the outputs
         long numOutputs = readVarInt();
         optimalEncodingMessageSize += VarInt.sizeOf(numOutputs);
@@ -568,7 +572,11 @@ public class Transaction extends ChildMessage implements Serializable {
         for (long i = 0; i < numOutputs; i++) {
             TransactionOutput output = new TransactionOutput(params, this, payload, cursor, parseLazy, parseRetain);
             outputs.add(output);
-            long scriptLen = readVarInt(8);
+            long scriptLen = readVarInt(
+                    33 +
+                    VarInt.sizeOf(output.getRangeProof().length) + output.getRangeProof().length +
+                    VarInt.sizeOf(output.getNonceCommitment().length) + output.getNonceCommitment().length
+            );
             optimalEncodingMessageSize += 8 + VarInt.sizeOf(scriptLen) + scriptLen;
             cursor += scriptLen;
         }

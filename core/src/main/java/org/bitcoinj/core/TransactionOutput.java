@@ -41,6 +41,8 @@ public class TransactionOutput extends ChildMessage implements Serializable {
     // this output.
     private byte[] scriptBytes;
 
+    private byte[] commitment, rangeProof, nonceCommitment;
+
     // The script bytes are parsed and turned into a Script on demand.
     private transient Script scriptPubKey;
 
@@ -159,7 +161,11 @@ public class TransactionOutput extends ChildMessage implements Serializable {
 
     @Override
     protected void parseLite() throws ProtocolException {
-        value = readInt64();
+        commitment = readBytes(33);
+        int rangeProofLen = (int)readVarInt();
+        rangeProof = readBytes(rangeProofLen);
+        int nonceCommitmentLen = (int)readVarInt();
+        nonceCommitment = readBytes(nonceCommitmentLen);
         scriptLen = (int) readVarInt();
         length = cursor - offset + scriptLen;
     }
@@ -446,5 +452,17 @@ public class TransactionOutput extends ChildMessage implements Serializable {
         if (parent != null)
             result *= parent.getHash().hashCode() + getIndex();
         return result;
+    }
+
+    public byte[] getCommitment() {
+        return commitment;
+    }
+
+    public byte[] getRangeProof() {
+        return rangeProof;
+    }
+
+    public byte[] getNonceCommitment() {
+        return nonceCommitment;
     }
 }
