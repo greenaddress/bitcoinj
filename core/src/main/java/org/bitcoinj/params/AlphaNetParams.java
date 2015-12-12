@@ -1,6 +1,7 @@
 /*
  * Copyright 2013 Google Inc.
  * Copyright 2014 Andreas Schildbach
+ * Copyright 2015 GreenAddress
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +18,9 @@
 
 package org.bitcoinj.params;
 
+
 /**
- * Parameters for the testnet, a separate public instance of Bitcoin that has relaxed rules suitable for development
- * and testing of applications and new Bitcoin versions.
+ * Parameters for alpha, a sidechain of Bitcoin TestNetV3
  */
 public class AlphaNetParams extends TestNet3Params {
     public AlphaNetParams() {
@@ -28,6 +29,8 @@ public class AlphaNetParams extends TestNet3Params {
         dnsSeeds = new String[] {
                 "alpha-seed.bluematt.me"  // Matt Corallo
         };
+        packetMagic = 0xa11ffa;
+        port = 4242;
     }
 
     private static AlphaNetParams instance;
