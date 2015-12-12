@@ -59,6 +59,8 @@ public abstract class NetworkParameters implements Serializable {
     public static final String ID_MAINNET = "org.bitcoin.production";
     /** The string returned by getId() for the testnet. */
     public static final String ID_TESTNET = "org.bitcoin.test";
+    /** The string returned by getId() for the testnet. */
+    public static final String ID_ALPHANET = "org.bitcoin.alpha";
     /** The string returned by getId() for regtest mode. */
     public static final String ID_REGTEST = "org.bitcoin.regtest";
     /** Unit test network. */
@@ -71,6 +73,8 @@ public abstract class NetworkParameters implements Serializable {
     /** The string used by the payment protocol to represent unit testing (note that this is non-standard). */
     public static final String PAYMENT_PROTOCOL_ID_UNIT_TESTS = "unittest";
     public static final String PAYMENT_PROTOCOL_ID_REGTEST = "regtest";
+    public static final String PAYMENT_PROTOCOL_ID_ALPHANET = "alpha";
+
 
     // TODO: Seed nodes should be here as well.
 
@@ -172,6 +176,12 @@ public abstract class NetworkParameters implements Serializable {
         return TestNet3Params.get();
     }
 
+    /** Alias for AlphaNetParams.get(), use that instead. */
+    @Deprecated
+    public static NetworkParameters alphaNet() {
+        return AlphaNetParams.get();
+    }
+
     /** Alias for MainNetParams.get(), use that instead */
     @Deprecated
     public static NetworkParameters prodNet() {
@@ -223,7 +233,9 @@ public abstract class NetworkParameters implements Serializable {
             return UnitTestParams.get();
         } else if (id.equals(ID_REGTEST)) {
             return RegTestParams.get();
-        } else {
+        } else if (id.equals(ID_ALPHANET)) {
+            return AlphaNetParams.get();
+        }  else {
             return null;
         }
     }
@@ -239,6 +251,8 @@ public abstract class NetworkParameters implements Serializable {
             return UnitTestParams.get();
         } else if (pmtProtocolId.equals(PAYMENT_PROTOCOL_ID_REGTEST)) {
             return RegTestParams.get();
+        } else if (pmtProtocolId.equals(PAYMENT_PROTOCOL_ID_ALPHANET)) {
+            return AlphaNetParams.get();
         } else {
             return null;
         }
