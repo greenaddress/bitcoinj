@@ -45,6 +45,7 @@ public class TransactionInput extends ChildMessage implements Serializable {
     private static final long serialVersionUID = 2;
     public static final byte[] EMPTY_ARRAY = new byte[0];
 
+    public TransactionOutput prevOut;
     // Allows for altering transactions after they were broadcast. Tx replacement is currently disabled in the C++
     // client so this is always the UINT_MAX.
     // TODO: Document this in more detail and build features that use it.
@@ -151,6 +152,20 @@ public class TransactionInput extends ChildMessage implements Serializable {
     @Override
     protected void bitcoinSerializeToStream(OutputStream stream) throws IOException {
         outpoint.bitcoinSerialize(stream);
+        stream.write(new VarInt(scriptBytes.length).encode());
+        stream.write(scriptBytes);
+        Utils.uint32ToByteStreamLE(sequence, stream);
+    }
+
+    protected void bitcoinSerializeForCTSigning(OutputStream stream) throws IOException {
+        outpoint.bitcoinSerialize(stream);
+
+        stream.write(prevOut.getCommitment());
+        stream.write(new VarInt(prevOut.getRangeProof().length).encode());
+        stream.write(prevOut.getRangeProof());
+        stream.write(new VarInt(prevOut.getNonceCommitment().length).encode());
+        stream.write(prevOut.getNonceCommitment());
+
         stream.write(new VarInt(scriptBytes.length).encode());
         stream.write(scriptBytes);
         Utils.uint32ToByteStreamLE(sequence, stream);

@@ -29,6 +29,7 @@ import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.spongycastle.util.encoders.Hex;
 
 import javax.annotation.Nullable;
 import java.io.*;
@@ -105,7 +106,7 @@ public class Transaction extends ChildMessage implements Serializable {
     private ArrayList<TransactionInput> inputs;
     private ArrayList<TransactionOutput> outputs;
 
-    private BigInteger fee;
+    private BigInteger feeCT;
 
     private long lockTime;
 
@@ -421,6 +422,10 @@ public class Transaction extends ChildMessage implements Serializable {
         return fee;
     }
 
+    public void setFeeCT(BigInteger feeCT) {
+        this.feeCT = feeCT;
+    }
+
     /**
      * Returns true if any of the outputs is marked as spent.
      */
@@ -564,7 +569,7 @@ public class Transaction extends ChildMessage implements Serializable {
             optimalEncodingMessageSize += TransactionOutPoint.MESSAGE_LENGTH + VarInt.sizeOf(scriptLen) + scriptLen + 4;
             cursor += scriptLen + 4;
         }
-        fee = readUint64();
+        feeCT = readUint64();
         // Now the outputs
         long numOutputs = readVarInt();
         optimalEncodingMessageSize += VarInt.sizeOf(numOutputs);
@@ -1017,6 +1022,7 @@ public class Transaction extends ChildMessage implements Serializable {
                 this.inputs.add(input);
             }
 
+
             ByteArrayOutputStream bos = new UnsafeByteArrayOutputStream(length == UNKNOWN_LENGTH ? 256 : length + 4);
             bitcoinSerialize(bos);
             // We also have to write a hash type (sigHashType is actually an unsigned char)
@@ -1039,15 +1045,60 @@ public class Transaction extends ChildMessage implements Serializable {
         }
     }
 
+    public synchronized Sha256Hash hashForCTSignature(int inputIndex, byte[] connectedScript) {
+        try {
+            byte[][] inputScripts = new byte[inputs.size()][];
+            for (int i = 0; i < inputs.size(); i++) {
+                inputScripts[i] = inputs.get(i).getScriptBytes();
+                inputs.get(i).setScriptBytes(TransactionInput.EMPTY_ARRAY);
+            }
+
+            TransactionInput input = inputs.get(inputIndex);
+            input.setScriptBytes(connectedScript);
+
+            ByteArrayOutputStream bos = new UnsafeByteArrayOutputStream(length == UNKNOWN_LENGTH ? 256 : length + 4);
+            bitcoinSerializeForCTSigning(bos);
+            byte sigHashType = (byte) TransactionSignature.calcSigHashValue(SigHash.ALL, false);
+            // We also have to write a hash type (sigHashType is actually an unsigned char)
+            uint32ToByteStreamLE(0x000000ff & sigHashType, bos);
+
+            // Note that this is NOT reversed to ensure it will be signed correctly. If it were to be printed out
+            // however then we would expect that it is IS reversed.
+            Sha256Hash hash = Sha256Hash.twiceOf(bos.toByteArray());
+            bos.close();
+            // Put the transaction back to how we found it.
+            for (int i = 0; i < inputs.size(); i++) {
+                inputs.get(i).setScriptBytes(inputScripts[i]);
+            }
+
+            return hash;
+        } catch (IOException e) {
+            throw new RuntimeException(e);  // Cannot happen.
+        }
+    }
+
     @Override
     protected void bitcoinSerializeToStream(OutputStream stream) throws IOException {
         uint32ToByteStreamLE(version, stream);
         stream.write(new VarInt(inputs.size()).encode());
         for (TransactionInput in : inputs)
             in.bitcoinSerialize(stream);
+        // FIXME: remove this hack for alpha genesis feeCT == null failing initalisation
+        uint64ToByteStreamLE(feeCT == null ? BigInteger.ZERO : feeCT, stream);
         stream.write(new VarInt(outputs.size()).encode());
         for (TransactionOutput out : outputs)
             out.bitcoinSerialize(stream);
+        uint32ToByteStreamLE(lockTime, stream);
+    }
+
+    protected void bitcoinSerializeForCTSigning(OutputStream stream) throws IOException {
+        uint32ToByteStreamLE(version, stream);
+        stream.write(new VarInt(inputs.size()).encode());
+        for (TransactionInput in : inputs)
+            in.bitcoinSerializeForCTSigning(stream);
+        stream.write(new VarInt(outputs.size()).encode());
+        for (TransactionOutput out : outputs)
+            out.bitcoinSerializeForCTSigning(stream);
         uint32ToByteStreamLE(lockTime, stream);
     }
 

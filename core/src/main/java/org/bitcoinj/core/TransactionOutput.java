@@ -114,6 +114,15 @@ public class TransactionOutput extends ChildMessage implements Serializable {
         length = 8 + VarInt.sizeOf(scriptBytes.length) + scriptBytes.length;
     }
 
+    public TransactionOutput(NetworkParameters params, @Nullable Transaction parent, byte[] commitment, byte[] rangeProof, byte[] nonceCommitment, Address addr) {
+        super(params);
+        setParent(parent);
+        this.commitment = commitment;
+        this.rangeProof = rangeProof;
+        this.nonceCommitment = nonceCommitment;
+        this.scriptBytes = ScriptBuilder.createOutputScript(addr).getProgram();
+    }
+
     public Script getScriptPubKey() throws ScriptException {
         if (scriptPubKey == null) {
             maybeParse();
@@ -179,8 +188,56 @@ public class TransactionOutput extends ChildMessage implements Serializable {
     protected void bitcoinSerializeToStream(OutputStream stream) throws IOException {
         checkNotNull(scriptBytes);
         maybeParse();
-        Utils.int64ToByteStreamLE(value, stream);
+
+        // FIXME: remove this hack for alpha genesis commitment == null failing initalisation
+        if (this.commitment != null) {
+            stream.write(this.commitment);
+        }
+
+        if (this.rangeProof == null) {
+            // FIXME: remove this hack for alpha genesis rangeProof == null failing initalisation
+            stream.write(new VarInt(0).encode());
+            stream.write(new VarInt(0).encode());
+        } else {
+            stream.write(new VarInt(this.rangeProof.length).encode());
+            stream.write(this.rangeProof);
+            stream.write(new VarInt(this.nonceCommitment.length).encode());
+            stream.write(this.nonceCommitment);
+        }
+
         // TODO: Move script serialization into the Script class, where it belongs.
+        stream.write(new VarInt(scriptBytes.length).encode());
+        stream.write(scriptBytes);
+    }
+
+    public void bitcoinSerializeForCTSigning(OutputStream stream) throws IOException {
+        checkNotNull(scriptBytes);
+        maybeParse();
+        stream.write(this.commitment);
+
+        byte[] rangeProofLen = new VarInt(this.rangeProof.length).encode();
+        byte[] nonceCommitmentLen = new VarInt(this.nonceCommitment.length).encode();
+        byte[] toHash = new byte[
+                rangeProofLen.length +
+                this.rangeProof.length +
+                nonceCommitmentLen.length +
+                this.nonceCommitment.length
+        ];
+        int offset = 0;
+        for (int i = 0; i < rangeProofLen.length; ++i) {
+            toHash[offset++] = rangeProofLen[i];
+        }
+        for (int i = 0; i < this.rangeProof.length; ++i) {
+            toHash[offset++] = this.rangeProof[i];
+        }
+        for (int i = 0; i < nonceCommitmentLen.length; ++i) {
+            toHash[offset++] = nonceCommitmentLen[i];
+        }
+        for (int i = 0; i < this.nonceCommitment.length; ++i) {
+            toHash[offset++] = this.nonceCommitment[i];
+        }
+        stream.write(Sha256Hash.twiceOf(toHash).getBytes());
+
         stream.write(new VarInt(scriptBytes.length).encode());
         stream.write(scriptBytes);
     }
