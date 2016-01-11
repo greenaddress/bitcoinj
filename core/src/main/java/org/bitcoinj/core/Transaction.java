@@ -569,7 +569,9 @@ public class Transaction extends ChildMessage implements Serializable {
             optimalEncodingMessageSize += TransactionOutPoint.MESSAGE_LENGTH + VarInt.sizeOf(scriptLen) + scriptLen + 4;
             cursor += scriptLen + 4;
         }
-        feeCT = readUint64();
+        if (params.getId().equals(NetworkParameters.ID_ALPHANET)) {
+            feeCT = readUint64();
+        }
         // Now the outputs
         long numOutputs = readVarInt();
         optimalEncodingMessageSize += VarInt.sizeOf(numOutputs);
@@ -577,11 +579,16 @@ public class Transaction extends ChildMessage implements Serializable {
         for (long i = 0; i < numOutputs; i++) {
             TransactionOutput output = new TransactionOutput(params, this, payload, cursor, parseLazy, parseRetain);
             outputs.add(output);
-            long scriptLen = readVarInt(
-                    33 +
-                    VarInt.sizeOf(output.getRangeProof().length) + output.getRangeProof().length +
-                    VarInt.sizeOf(output.getNonceCommitment().length) + output.getNonceCommitment().length
-            );
+            long scriptLen;
+            if (params.getId().equals(NetworkParameters.ID_ALPHANET)) {
+                scriptLen = readVarInt(
+                        33 +
+                                VarInt.sizeOf(output.getRangeProof().length) + output.getRangeProof().length +
+                                VarInt.sizeOf(output.getNonceCommitment().length) + output.getNonceCommitment().length
+                );
+            } else {
+                scriptLen = readVarInt(8);
+            }
             optimalEncodingMessageSize += 8 + VarInt.sizeOf(scriptLen) + scriptLen;
             cursor += scriptLen;
         }
@@ -1083,8 +1090,9 @@ public class Transaction extends ChildMessage implements Serializable {
         stream.write(new VarInt(inputs.size()).encode());
         for (TransactionInput in : inputs)
             in.bitcoinSerialize(stream);
-        // FIXME: remove this hack for alpha genesis feeCT == null failing initalisation
-        uint64ToByteStreamLE(feeCT == null ? BigInteger.ZERO : feeCT, stream);
+        if (params.getId() == NetworkParameters.ID_ALPHANET) {
+            uint64ToByteStreamLE(feeCT, stream);
+        }
         stream.write(new VarInt(outputs.size()).encode());
         for (TransactionOutput out : outputs)
             out.bitcoinSerialize(stream);

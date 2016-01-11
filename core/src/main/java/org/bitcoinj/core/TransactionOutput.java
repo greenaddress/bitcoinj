@@ -170,11 +170,15 @@ public class TransactionOutput extends ChildMessage implements Serializable {
 
     @Override
     protected void parseLite() throws ProtocolException {
-        commitment = readBytes(33);
-        int rangeProofLen = (int)readVarInt();
-        rangeProof = readBytes(rangeProofLen);
-        int nonceCommitmentLen = (int)readVarInt();
-        nonceCommitment = readBytes(nonceCommitmentLen);
+        if (params.getId().equals(NetworkParameters.ID_ALPHANET)) {
+            commitment = readBytes(33);
+            int rangeProofLen = (int) readVarInt();
+            rangeProof = readBytes(rangeProofLen);
+            int nonceCommitmentLen = (int) readVarInt();
+            nonceCommitment = readBytes(nonceCommitmentLen);
+        } else {
+            value = readInt64();
+        }
         scriptLen = (int) readVarInt();
         length = cursor - offset + scriptLen;
     }
@@ -189,20 +193,14 @@ public class TransactionOutput extends ChildMessage implements Serializable {
         checkNotNull(scriptBytes);
         maybeParse();
 
-        // FIXME: remove this hack for alpha genesis commitment == null failing initalisation
-        if (this.commitment != null) {
+        if (params.getId() == NetworkParameters.ID_ALPHANET) {
             stream.write(this.commitment);
-        }
-
-        if (this.rangeProof == null) {
-            // FIXME: remove this hack for alpha genesis rangeProof == null failing initalisation
-            stream.write(new VarInt(0).encode());
-            stream.write(new VarInt(0).encode());
-        } else {
             stream.write(new VarInt(this.rangeProof.length).encode());
             stream.write(this.rangeProof);
             stream.write(new VarInt(this.nonceCommitment.length).encode());
             stream.write(this.nonceCommitment);
+        } else {
+            Utils.int64ToByteStreamLE(value, stream);
         }
 
         // TODO: Move script serialization into the Script class, where it belongs.
@@ -521,5 +519,17 @@ public class TransactionOutput extends ChildMessage implements Serializable {
 
     public byte[] getNonceCommitment() {
         return nonceCommitment;
+    }
+
+    public void setCommitment(byte[] commitment) {
+        this.commitment = commitment;
+    }
+
+    public void setRangeProof(byte[] rangeProof) {
+        this.rangeProof = rangeProof;
+    }
+
+    public void setNonceCommitment(byte[] nonceCommitment) {
+        this.nonceCommitment = nonceCommitment;
     }
 }
