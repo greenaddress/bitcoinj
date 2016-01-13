@@ -17,10 +17,7 @@
 package org.bitcoinj.core;
 
 import com.google.common.collect.*;
-import org.bitcoinj.core.listeners.AbstractPeerConnectionEventListener;
-import org.bitcoinj.core.listeners.AbstractPeerDataEventListener;
-import org.bitcoinj.core.listeners.AbstractWalletEventListener;
-import org.bitcoinj.core.listeners.PeerConnectionEventListener;
+import org.bitcoinj.core.listeners.*;
 import org.bitcoinj.params.TestNet3Params;
 import org.bitcoinj.testing.FakeTxBuilder;
 import org.bitcoinj.testing.InboundMessageQueuer;
@@ -82,7 +79,7 @@ public class PeerTest extends TestWithNetworkConnections {
         super.setUp();
         VersionMessage ver = new VersionMessage(params, 100);
         InetSocketAddress address = new InetSocketAddress("127.0.0.1", 4000);
-        peer = new Peer(params, ver, new PeerAddress(address), blockChain);
+        peer = new Peer(params, ver, new PeerAddress(params, address), blockChain);
         peer.addWallet(wallet);
     }
 
@@ -123,7 +120,7 @@ public class PeerTest extends TestWithNetworkConnections {
     @Test
     public void chainDownloadEnd2End() throws Exception {
         // A full end-to-end test of the chain download process, with a new block being solved in the middle.
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         Block b2 = makeSolvedTestBlock(b1);
         Block b3 = makeSolvedTestBlock(b2);
@@ -199,7 +196,7 @@ public class PeerTest extends TestWithNetworkConnections {
     public void invTickle() throws Exception {
         connect();
 
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         // Make a missing block.
         Block b2 = makeSolvedTestBlock(b1);
@@ -229,7 +226,7 @@ public class PeerTest extends TestWithNetworkConnections {
         connect();
 
         // Make a missing block that we receive.
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         Block b2 = makeSolvedTestBlock(b1);
 
@@ -272,7 +269,7 @@ public class PeerTest extends TestWithNetworkConnections {
         // Check co-ordination of which peer to download via the memory pool.
         VersionMessage ver = new VersionMessage(params, 100);
         InetSocketAddress address = new InetSocketAddress("127.0.0.1", 4242);
-        Peer peer2 = new Peer(params, ver, new PeerAddress(address), blockChain);
+        Peer peer2 = new Peer(params, ver, new PeerAddress(params, address), blockChain);
         peer2.addWallet(wallet);
         VersionMessage peerVersion = new VersionMessage(params, OTHER_PEER_CHAIN_HEIGHT);
         peerVersion.clientVersion = 70001;
@@ -305,7 +302,7 @@ public class PeerTest extends TestWithNetworkConnections {
     // Check that inventory message containing blocks we want is processed correctly.
     @Test
     public void newBlock() throws Exception {
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         final Block b2 = makeSolvedTestBlock(b1);
         // Receive notification of a new block.
@@ -365,7 +362,7 @@ public class PeerTest extends TestWithNetworkConnections {
     // Check that it starts downloading the block chain correctly on request.
     @Test
     public void startBlockChainDownload() throws Exception {
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         Block b2 = makeSolvedTestBlock(b1);
         blockChain.add(b2);
@@ -395,7 +392,7 @@ public class PeerTest extends TestWithNetworkConnections {
     public void getBlock() throws Exception {
         connect();
 
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         Block b2 = makeSolvedTestBlock(b1);
         Block b3 = makeSolvedTestBlock(b2);
@@ -417,7 +414,7 @@ public class PeerTest extends TestWithNetworkConnections {
     public void getLargeBlock() throws Exception {
         connect();
 
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         Block b2 = makeSolvedTestBlock(b1);
         Transaction t = new Transaction(params);
@@ -444,7 +441,7 @@ public class PeerTest extends TestWithNetworkConnections {
         Utils.setMockClock();
         // Check that blocks before the fast catchup point are retrieved using getheaders, and after using getblocks.
         // This test is INCOMPLETE because it does not check we handle >2000 blocks correctly.
-        Block b1 = createFakeBlock(blockStore).block;
+        Block b1 = createFakeBlock(blockStore, Block.BLOCK_HEIGHT_GENESIS).block;
         blockChain.add(b1);
         Utils.rollMockClock(60 * 10);  // 10 minutes later.
         Block b2 = makeSolvedTestBlock(b1);
@@ -549,7 +546,7 @@ public class PeerTest extends TestWithNetworkConnections {
         ECKey to = new ECKey();
 
         final Transaction[] onTx = new Transaction[1];
-        peer.addDataEventListener(Threading.SAME_THREAD, new AbstractPeerDataEventListener() {
+        peer.addOnTransactionBroadcastListener(Threading.SAME_THREAD, new OnTransactionBroadcastListener() {
             @Override
             public void onTransaction(Peer peer1, Transaction t) {
                 onTx[0] = t;
@@ -806,7 +803,7 @@ public class PeerTest extends TestWithNetworkConnections {
         t1.addOutput(COIN, new ECKey().toAddress(params));
         Transaction t2 = new Transaction(params);
         t2.addInput(t1.getOutput(0));
-        t2.addOutput(COIN, wallet.getChangeAddress());
+        t2.addOutput(COIN, wallet.currentChangeAddress());
         inbound(writeTarget, t2);
         final InventoryItem inventoryItem = new InventoryItem(InventoryItem.Type.Transaction, t2.getInput(0).getOutpoint().getHash());
         final NotFoundMessage nfm = new NotFoundMessage(params, Lists.newArrayList(inventoryItem));

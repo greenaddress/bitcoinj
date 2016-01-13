@@ -16,6 +16,7 @@
 
 package org.bitcoinj.protocols.channels;
 
+import com.google.common.collect.ImmutableMap;
 import org.bitcoinj.core.*;
 import org.bitcoinj.utils.Threading;
 import com.google.common.annotations.VisibleForTesting;
@@ -84,7 +85,7 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
      *
      * @param broadcaster Used when the payment channels are closed
      */
-    public void setTransactionBroadcaster(TransactionBroadcaster broadcaster) {
+    public final void setTransactionBroadcaster(TransactionBroadcaster broadcaster) {
         this.broadcasterFuture.set(checkNotNull(broadcaster));
     }
 
@@ -144,6 +145,18 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
         lock.lock();
         try {
             return mapChannels.get(id);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Get a copy of all {@link StoredServerChannel}s
+     */
+    public Map<Sha256Hash, StoredServerChannel> getChannelMap() {
+        lock.lock();
+        try {
+            return ImmutableMap.copyOf(mapChannels);
         } finally {
             lock.unlock();
         }

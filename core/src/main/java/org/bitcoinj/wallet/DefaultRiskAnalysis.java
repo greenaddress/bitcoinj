@@ -47,10 +47,10 @@ public class DefaultRiskAnalysis implements RiskAnalysis {
 
     /**
      * Any standard output smaller than this value (in satoshis) will be considered risky, as it's most likely be
-     * rejected by the network. Currently it's 546 satoshis. This is different from {@link Transaction#MIN_NONDUST_OUTPUT}
-     * because of an upcoming fee change in Bitcoin Core 0.9.
+     * rejected by the network. This is usually the same as {@link Transaction#MIN_NONDUST_OUTPUT} but can be
+     * different when the fee is about to change in Bitcoin Core.
      */
-    public static final Coin MIN_ANALYSIS_NONDUST_OUTPUT = Coin.valueOf(546);
+    public static final Coin MIN_ANALYSIS_NONDUST_OUTPUT = Transaction.MIN_NONDUST_OUTPUT;
 
     protected final Transaction tx;
     protected final List<Transaction> dependencies;
@@ -120,7 +120,7 @@ public class DefaultRiskAnalysis implements RiskAnalysis {
     }
 
     /**
-     * <p>Checks if a transaction is considered "standard" by the reference client's IsStandardTx and AreInputsStandard
+     * <p>Checks if a transaction is considered "standard" by Bitcoin Core's IsStandardTx and AreInputsStandard
      * functions.</p>
      *
      * <p>Note that this method currently only implements a minimum of checks. More to be added later.</p>
@@ -183,6 +183,8 @@ public class DefaultRiskAnalysis implements RiskAnalysis {
                 }
                 if (signature != null) {
                     if (!TransactionSignature.isEncodingCanonical(chunk.data))
+                        return RuleViolation.SIGNATURE_CANONICAL_ENCODING;
+                    if (!signature.isCanonical())
                         return RuleViolation.SIGNATURE_CANONICAL_ENCODING;
                 }
             }

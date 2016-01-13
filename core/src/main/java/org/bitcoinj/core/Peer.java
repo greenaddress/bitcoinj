@@ -18,8 +18,8 @@ package org.bitcoinj.core;
 
 import com.google.common.base.*;
 import com.google.common.base.Objects;
-import org.bitcoinj.core.listeners.PeerConnectionEventListener;
-import org.bitcoinj.core.listeners.PeerDataEventListener;
+import org.bitcoinj.core.listeners.*;
+import org.bitcoinj.net.StreamConnection;
 import org.bitcoinj.store.BlockStore;
 import org.bitcoinj.store.BlockStoreException;
 import org.bitcoinj.utils.ListenerRegistration;
@@ -68,7 +68,7 @@ public class Peer extends PeerSocketHandler {
     static class PeerConnectionListenerRegistration extends ListenerRegistration<PeerConnectionEventListener> {
         boolean callOnDisconnect = true;
         public PeerConnectionListenerRegistration(PeerConnectionEventListener listener, Executor executor) {
-            super(executor, listener);
+            super(listener, executor);
         }
 
         public PeerConnectionListenerRegistration(PeerConnectionEventListener listener, Executor executor, boolean callOnDisconnect) {
@@ -78,6 +78,7 @@ public class Peer extends PeerSocketHandler {
     }
     private final CopyOnWriteArrayList<PeerConnectionListenerRegistration> connectionEventListeners;
     private final CopyOnWriteArrayList<ListenerRegistration<PeerDataEventListener>> dataEventListeners;
+    private final CopyOnWriteArrayList<ListenerRegistration<OnTransactionBroadcastListener>> onTransactionEventListeners;
     // Whether to try and download blocks and transactions from this peer. Set to false by PeerGroup if not the
     // primary peer. This is to avoid redundant work and concurrency problems with downloading the same chain
     // in parallel.
@@ -132,7 +133,7 @@ public class Peer extends PeerSocketHandler {
     @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
     private final HashSet<TransactionConfidence> pendingTxDownloads = new HashSet<TransactionConfidence>();
     // The lowest version number we're willing to accept. Lower than this will result in an immediate disconnect.
-    private volatile int vMinProtocolVersion = Pong.MIN_PROTOCOL_VERSION;
+    private volatile int vMinProtocolVersion;
     // When an API user explicitly requests a block or transaction from a peer, the InventoryItem is put here
     // whilst waiting for the response. Is not used for downloads Peer generates itself.
     private static class GetDataRequest {
@@ -162,9 +163,9 @@ public class Peer extends PeerSocketHandler {
      *
      * <p>Note that this does <b>NOT</b> make a connection to the given remoteAddress, it only creates a handler for a
      * connection. If you want to create a one-off connection, create a Peer and pass it to
-     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, org.bitcoinj.net.StreamParser)}
+     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, StreamConnection)}
      * or
-     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, org.bitcoinj.net.StreamParser, int)}.</p>
+     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, StreamConnection, int)}.</p>
      *
      * <p>The remoteAddress provided should match the remote address of the peer which is being connected to, and is
      * used to keep track of which peers relayed transactions and offer more descriptive logging.</p>
@@ -180,9 +181,9 @@ public class Peer extends PeerSocketHandler {
      *
      * <p>Note that this does <b>NOT</b> make a connection to the given remoteAddress, it only creates a handler for a
      * connection. If you want to create a one-off connection, create a Peer and pass it to
-     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, org.bitcoinj.net.StreamParser)}
+     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, StreamConnection)}
      * or
-     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, org.bitcoinj.net.StreamParser, int)}.</p>
+     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, StreamConnection, int)}.</p>
      *
      * <p>The remoteAddress provided should match the remote address of the peer which is being connected to, and is
      * used to keep track of which peers relayed transactions and offer more descriptive logging.</p>
@@ -199,9 +200,9 @@ public class Peer extends PeerSocketHandler {
      *
      * <p>Note that this does <b>NOT</b> make a connection to the given remoteAddress, it only creates a handler for a
      * connection. If you want to create a one-off connection, create a Peer and pass it to
-     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, org.bitcoinj.net.StreamParser)}
+     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, StreamConnection)}
      * or
-     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, org.bitcoinj.net.StreamParser, int)}.</p>
+     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, StreamConnection, int)}.</p>
      *
      * <p>The remoteAddress provided should match the remote address of the peer which is being connected to, and is
      * used to keep track of which peers relayed transactions and offer more descriptive logging.</p>
@@ -217,10 +218,12 @@ public class Peer extends PeerSocketHandler {
         this.getDataFutures = new CopyOnWriteArrayList<GetDataRequest>();
         this.connectionEventListeners = new CopyOnWriteArrayList<PeerConnectionListenerRegistration>();
         this.dataEventListeners = new CopyOnWriteArrayList<ListenerRegistration<PeerDataEventListener>>();
+        this.onTransactionEventListeners = new CopyOnWriteArrayList<ListenerRegistration<OnTransactionBroadcastListener>>();
         this.getAddrFutures = new LinkedList<SettableFuture<AddressMessage>>();
         this.fastCatchupTimeSecs = params.getGenesisBlock().getTimeSeconds();
         this.isAcked = false;
         this.pendingPings = new CopyOnWriteArrayList<PendingPing>();
+        this.vMinProtocolVersion = params.getProtocolVersionNum(NetworkParameters.ProtocolVersion.PONG);
         this.wallets = new CopyOnWriteArrayList<Wallet>();
         this.context = Context.get();
     }
@@ -232,9 +235,9 @@ public class Peer extends PeerSocketHandler {
      *
      * <p>Note that this does <b>NOT</b> make a connection to the given remoteAddress, it only creates a handler for a
      * connection. If you want to create a one-off connection, create a Peer and pass it to
-     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, org.bitcoinj.net.StreamParser)}
+     * {@link org.bitcoinj.net.NioClientManager#openConnection(java.net.SocketAddress, StreamConnection)}
      * or
-     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, org.bitcoinj.net.StreamParser, int)}.</p>
+     * {@link org.bitcoinj.net.NioClient#NioClient(java.net.SocketAddress, StreamConnection, int)}.</p>
      *
      * <p>The remoteAddress provided should match the remote address of the peer which is being connected to, and is
      * used to keep track of which peers relayed transactions and offer more descriptive logging.</p>
@@ -244,46 +247,56 @@ public class Peer extends PeerSocketHandler {
         this.versionMessage.appendToSubVer(thisSoftwareName, thisSoftwareVersion, null);
     }
 
-    /**
-     * Registers the given object as an event listener that will be invoked on the user thread. Note that listeners
-     * added this way will <b>not</b> receive {@link PeerEventListener#getData(Peer, GetDataMessage)} or
-     * {@link PeerEventListener#onPreMessageReceived(Peer, Message)} calls because those require that the listener
-     * be added using {@link Threading#SAME_THREAD}, which requires the other addListener form.
-     */
+    /** Deprecated: use the more specific event handler methods instead */
+    @Deprecated @SuppressWarnings("deprecation")
+    public void addEventListener(AbstractPeerEventListener listener) {
+        addEventListener(listener, Threading.USER_THREAD);
+    }
+
+    /** Deprecated: use the more specific event handler methods instead */
+    @Deprecated
+    public void addEventListener(AbstractPeerEventListener listener, Executor executor) {
+        addConnectionEventListener(executor, listener);
+        addDataEventListener(executor, listener);
+        addOnTransactionBroadcastListener(executor, listener);
+    }
+
+    /** Deprecated: use the more specific event handler methods instead */
+    @Deprecated
+    public void removeEventListener(AbstractPeerEventListener listener) {
+        removeConnectionEventListener(listener);
+        removeDataEventListener(listener);
+        removeOnTransactionBroadcastListener(listener);
+    }
+
+    /** Registers a listener that is invoked when a peer is connected or disconnected. */
     public void addConnectionEventListener(PeerConnectionEventListener listener) {
         addConnectionEventListener(Threading.USER_THREAD, listener);
     }
 
-    /**
-     * Registers the given object as an event listener that will be invoked on the user thread. Note that listeners
-     * added this way will <b>not</b> receive {@link PeerEventListener#getData(Peer, GetDataMessage)} or
-     * {@link PeerEventListener#onPreMessageReceived(Peer, Message)} calls because those require that the listener
-     * be added using {@link Threading#SAME_THREAD}, which requires the other addListener form.
-     */
-    public void addDataEventListener(PeerDataEventListener listener) {
-        addDataEventListener(Threading.USER_THREAD, listener);
-    }
-
-    /**
-     * Registers the given object as an event listener that will be invoked by the given executor. Note that listeners
-     * added using any other executor than {@link Threading#SAME_THREAD} will <b>not</b> receive
-     * {@link PeerEventListener#getData(Peer, GetDataMessage)} or
-     * {@link PeerEventListener#onPreMessageReceived(Peer, Message)} calls because this class is not willing to cross
-     * threads in order to get the results of those hook methods.
-     */
+    /** Registers a listener that is invoked when a peer is connected or disconnected. */
     public void addConnectionEventListener(Executor executor, PeerConnectionEventListener listener) {
         connectionEventListeners.add(new PeerConnectionListenerRegistration(listener, executor));
     }
 
-    /**
-     * Registers the given object as an event listener that will be invoked by the given executor. Note that listeners
-     * added using any other executor than {@link Threading#SAME_THREAD} will <b>not</b> receive
-     * {@link PeerEventListener#getData(Peer, GetDataMessage)} or
-     * {@link PeerEventListener#onPreMessageReceived(Peer, Message)} calls because this class is not willing to cross
-     * threads in order to get the results of those hook methods.
-     */
+    /** Registers a listener that is called when messages are received. */
+    public void addDataEventListener(PeerDataEventListener listener) {
+        addDataEventListener(Threading.USER_THREAD, listener);
+    }
+
+    /** Registers a listener that is called when messages are received. */
     public void addDataEventListener(Executor executor, PeerDataEventListener listener) {
-        dataEventListeners.add(new ListenerRegistration<PeerDataEventListener>(executor, listener));
+        dataEventListeners.add(new ListenerRegistration<PeerDataEventListener>(listener, executor));
+    }
+
+    /** Registers a listener that is called when a transaction is broadcast across the network */
+    public void addOnTransactionBroadcastListener(OnTransactionBroadcastListener listener) {
+        addOnTransactionBroadcastListener(Threading.USER_THREAD, listener);
+    }
+
+    /** Registers a listener that is called when a transaction is broadcast across the network */
+    public void addOnTransactionBroadcastListener(Executor executor, OnTransactionBroadcastListener listener) {
+        onTransactionEventListeners.add(new ListenerRegistration<OnTransactionBroadcastListener>(listener, executor));
     }
 
     // Package-local version for PeerGroup
@@ -297,6 +310,10 @@ public class Peer extends PeerSocketHandler {
 
     public boolean removeDataEventListener(PeerDataEventListener listener) {
         return ListenerRegistration.removeFromList(listener, dataEventListeners);
+    }
+
+    public boolean removeOnTransactionBroadcastListener(OnTransactionBroadcastListener listener) {
+        return ListenerRegistration.removeFromList(listener, onTransactionEventListeners);
     }
 
     @Override
@@ -436,7 +453,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processUTXOMessage(UTXOsMessage m) {
+    protected void processUTXOMessage(UTXOsMessage m) {
         SettableFuture<UTXOsMessage> future = null;
         lock.lock();
         try {
@@ -472,7 +489,7 @@ public class Peer extends PeerSocketHandler {
                 peerVersion,
                 vPeerVersionMessage.subVer,
                 vPeerVersionMessage.localServices,
-                String.format("%tF %tT", peerTime, peerTime),
+                String.format(Locale.US, "%tF %tT", peerTime, peerTime),
                 vPeerVersionMessage.bestHeight);
         // Now it's our turn ...
         // Send an ACK message stating we accept the peers protocol version.
@@ -489,7 +506,7 @@ public class Peer extends PeerSocketHandler {
         versionHandshakeFuture.set(this);
     }
 
-    private void startFilteredBlock(FilteredBlock m) {
+    protected void startFilteredBlock(FilteredBlock m) {
         // Filtered blocks come before the data that they refer to, so stash it here and then fill it out as
         // messages stream in. We'll call endFilteredBlock when a non-tx message arrives (eg, another
         // FilteredBlock) or when a tx that isn't needed by that block is found. A ping message is sent after
@@ -504,7 +521,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processNotFoundMessage(NotFoundMessage m) {
+    protected void processNotFoundMessage(NotFoundMessage m) {
         // This is received when we previously did a getdata but the peer couldn't find what we requested in it's
         // memory pool. Typically, because we are downloading dependencies of a relevant transaction and reached
         // the bottom of the dependency tree (where the unconfirmed transactions connect to transactions that are
@@ -523,7 +540,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processAlert(AlertMessage m) {
+    protected void processAlert(AlertMessage m) {
         try {
             if (m.isSignatureValid()) {
                 log.info("Received alert from peer {}: {}", this, m.getStatusBar());
@@ -538,7 +555,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processHeaders(HeadersMessage m) throws ProtocolException {
+    protected void processHeaders(HeadersMessage m) throws ProtocolException {
         // Runs in network loop thread for this peer.
         //
         // This method can run if a peer just randomly sends us a "headers" message (should never happen), or more
@@ -618,7 +635,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processGetData(GetDataMessage getdata) {
+    protected void processGetData(GetDataMessage getdata) {
         log.info("{}: Received getdata message: {}", getAddress(), getdata.toString());
         ArrayList<Message> items = new ArrayList<Message>();
         for (ListenerRegistration<PeerDataEventListener> registration : dataEventListeners) {
@@ -636,7 +653,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processTransaction(final Transaction tx) throws VerificationException {
+    protected void processTransaction(final Transaction tx) throws VerificationException {
         // Check a few basic syntax issues to ensure the received TX isn't nonsense.
         tx.verify();
         lock.lock();
@@ -719,7 +736,7 @@ public class Peer extends PeerSocketHandler {
         }
         // Tell all listeners about this tx so they can decide whether to keep it or not. If no listener keeps a
         // reference around then the memory pool will forget about it after a while too because it uses weak references.
-        for (final ListenerRegistration<PeerDataEventListener> registration : dataEventListeners) {
+        for (final ListenerRegistration<OnTransactionBroadcastListener> registration : onTransactionEventListeners) {
             registration.executor.execute(new Runnable() {
                 @Override
                 public void run() {
@@ -768,7 +785,7 @@ public class Peer extends PeerSocketHandler {
     }
 
     // The marker object in the future returned is the same as the parameter. It is arbitrary and can be anything.
-    private ListenableFuture<Object> downloadDependenciesInternal(final Transaction tx,
+    protected ListenableFuture<Object> downloadDependenciesInternal(final Transaction tx,
                                                                   final Object marker,
                                                                   final List<Transaction> results) {
         final SettableFuture<Object> resultFuture = SettableFuture.create();
@@ -849,14 +866,14 @@ public class Peer extends PeerSocketHandler {
         return resultFuture;
     }
 
-    private void processBlock(Block m) {
+    protected void processBlock(Block m) {
         if (log.isDebugEnabled()) {
             log.debug("{}: Received broadcast block {}", getAddress(), m.getHashAsString());
         }
         // Was this block requested by getBlock()?
         if (maybeHandleRequestedData(m)) return;
         if (blockChain == null) {
-            log.warn("Received block but was not configured with an AbstractBlockChain");
+            log.debug("Received block but was not configured with an AbstractBlockChain");
             return;
         }
         // Did we lose download peer status after requesting block data?
@@ -911,7 +928,7 @@ public class Peer extends PeerSocketHandler {
     }
 
     // TODO: Fix this duplication.
-    private void endFilteredBlock(FilteredBlock m) {
+    protected void endFilteredBlock(FilteredBlock m) {
         if (log.isDebugEnabled())
             log.debug("{}: Received broadcast filtered block {}", getAddress(), m.getHash().toString());
         if (!vDownloadData) {
@@ -919,7 +936,7 @@ public class Peer extends PeerSocketHandler {
             return;
         }
         if (blockChain == null) {
-            log.warn("Received filtered block but was not configured with an AbstractBlockChain");
+            log.debug("Received filtered block but was not configured with an AbstractBlockChain");
             return;
         }
         // Note that we currently do nothing about peers which maliciously do not include transactions which
@@ -1046,7 +1063,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processInv(InventoryMessage inv) {
+    protected void processInv(InventoryMessage inv) {
         List<InventoryItem> items = inv.getItems();
 
         // Separate out the blocks and transactions, we'll handle them differently
@@ -1135,9 +1152,9 @@ public class Peer extends PeerSocketHandler {
                         // requesting a subset of what we already requested, which can lead to parallel chain downloads
                         // and other nastyness. So we just do a quick removal of redundant getdatas here too.
                         //
-                        // Note that as of June 2012 the Satoshi client won't actually ever interleave blocks pushed as
+                        // Note that as of June 2012 Bitcoin Core won't actually ever interleave blocks pushed as
                         // part of chain download with newly announced blocks, so it should always be taken care of by
-                        // the duplicate check in blockChainDownloadLocked(). But the satoshi client may change in future so
+                        // the duplicate check in blockChainDownloadLocked(). But Bitcoin Core may change in future so
                         // it's better to be safe here.
                         if (!pendingBlockDownloads.contains(item.hash)) {
                             if (vPeerVersionMessage.isBloomFilteringSupported() && useFilteredBlocks) {
@@ -1486,7 +1503,7 @@ public class Peer extends PeerSocketHandler {
         }
     }
 
-    private void processPong(Pong m) {
+    protected void processPong(Pong m) {
         // Iterates over a snapshot of the list, so we can run unlocked here.
         for (PendingPing ping : pendingPings) {
             if (m.getNonce() == ping.nonce) {
@@ -1558,8 +1575,9 @@ public class Peer extends PeerSocketHandler {
      */
     public boolean setMinProtocolVersion(int minProtocolVersion) {
         this.vMinProtocolVersion = minProtocolVersion;
-        if (getVersionMessage().clientVersion < minProtocolVersion) {
-            log.warn("{}: Disconnecting due to new min protocol version {}", this, minProtocolVersion);
+        VersionMessage ver = getPeerVersionMessage();
+        if (ver != null && ver.clientVersion < minProtocolVersion) {
+            log.warn("{}: Disconnecting due to new min protocol version {}, got: {}", this, minProtocolVersion, ver.clientVersion);
             close();
             return true;
         }

@@ -35,6 +35,7 @@ import java.math.*;
 import java.util.*;
 
 import static org.bitcoinj.core.Coin.*;
+import org.bitcoinj.utils.VersionTally;
 
 /**
  * <p>NetworkParameters contains the data needed for working with an instantiation of a Bitcoin chain.</p>
@@ -45,11 +46,6 @@ import static org.bitcoinj.core.Coin.*;
  * them, you are encouraged to call the static get() methods on each specific params class directly.</p>
  */
 public abstract class NetworkParameters {
-    /**
-     * The protocol version this library implements.
-     */
-    public static final int PROTOCOL_VERSION = 70001;
-
     /**
      * The alert signing key originally owned by Satoshi, and now passed on to Gavin along with a few others.
      */
@@ -475,5 +471,72 @@ public abstract class NetworkParameters {
      */
     public int getMajorityWindow() {
         return majorityWindow;
+    }
+
+    /**
+     * The flags indicating which block validation tests should be applied to
+     * the given block. Enables support for alternative blockchains which enable
+     * tests based on different criteria.
+     * 
+     * @param block block to determine flags for.
+     * @param height height of the block, if known, null otherwise. Returned
+     * tests should be a safe subset if block height is unknown.
+     */
+    public EnumSet<Block.VerifyFlag> getBlockVerificationFlags(final Block block,
+            final VersionTally tally, final Integer height) {
+        final EnumSet<Block.VerifyFlag> flags = EnumSet.noneOf(Block.VerifyFlag.class);
+
+        if (block.isBIP34()) {
+            final Integer count = tally.getCountAtOrAbove(Block.BLOCK_VERSION_BIP34);
+            if (null != count && count >= getMajorityEnforceBlockUpgrade()) {
+                flags.add(Block.VerifyFlag.HEIGHT_IN_COINBASE);
+            }
+        }
+        return flags;
+    }
+
+    /**
+     * The flags indicating which script validation tests should be applied to
+     * the given transaction. Enables support for alternative blockchains which enable
+     * tests based on different criteria.
+     *
+     * @param block block the transaction belongs to.
+     * @param transaction to determine flags for.
+     * @param height height of the block, if known, null otherwise. Returned
+     * tests should be a safe subset if block height is unknown.
+     */
+    public EnumSet<Script.VerifyFlag> getTransactionVerificationFlags(final Block block,
+            final Transaction transaction, final VersionTally tally, final Integer height) {
+        final EnumSet<Script.VerifyFlag> verifyFlags = EnumSet.noneOf(Script.VerifyFlag.class);
+        if (block.getTimeSeconds() >= NetworkParameters.BIP16_ENFORCE_TIME)
+            verifyFlags.add(Script.VerifyFlag.P2SH);
+
+        // Start enforcing CHECKLOCKTIMEVERIFY, (BIP65) for block.nVersion=4
+        // blocks, when 75% of the network has upgraded:
+        if (block.getVersion() >= Block.BLOCK_VERSION_BIP65 &&
+            tally.getCountAtOrAbove(Block.BLOCK_VERSION_BIP65) > this.getMajorityEnforceBlockUpgrade()) {
+            verifyFlags.add(Script.VerifyFlag.CHECKLOCKTIMEVERIFY);
+        }
+
+        return verifyFlags;
+    }
+
+    public abstract int getProtocolVersionNum(final ProtocolVersion version);
+
+    public static enum ProtocolVersion {
+        MINIMUM(70000),
+        PONG(60001),
+        BLOOM_FILTER(70000),
+        CURRENT(70001);
+
+        private final int bitcoinProtocol;
+
+        ProtocolVersion(final int bitcoinProtocol) {
+            this.bitcoinProtocol = bitcoinProtocol;
+        }
+
+        public int getBitcoinProtocolVersion() {
+            return bitcoinProtocol;
+        }
     }
 }

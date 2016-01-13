@@ -177,6 +177,7 @@ public class WalletTool {
         DECRYPT,
         MARRY,
         ROTATE,
+        SET_CREATION_TIME,
     }
 
     public enum WaitForEnum {
@@ -311,11 +312,14 @@ public class WalletTool {
 
         InputStream walletInputStream = null;
         try {
+            boolean forceReset = action == ActionEnum.RESET
+                || (action == ActionEnum.SYNC
+                    && options.has("force"));
             WalletProtobufSerializer loader = new WalletProtobufSerializer();
             if (options.has("ignore-mandatory-extensions"))
                 loader.setRequireMandatoryExtensions(false);
             walletInputStream = new BufferedInputStream(new FileInputStream(walletFile));
-            wallet = loader.readWallet(walletInputStream);
+            wallet = loader.readWallet(walletInputStream, forceReset, (WalletExtension[])(null));
             if (!wallet.getParams().equals(params)) {
                 System.err.println("Wallet does not match requested network parameters: " +
                         wallet.getParams().getId() + " vs " + params.getId());
@@ -366,13 +370,14 @@ public class WalletTool {
             case DECRYPT: decrypt(); break;
             case MARRY: marry(); break;
             case ROTATE: rotate(); break;
+            case SET_CREATION_TIME: setCreationTime(); break;
         }
 
         if (!wallet.isConsistent()) {
             System.err.println("************** WALLET IS INCONSISTENT *****************");
             return;
         }
-        
+
         saveWallet(walletFile);
 
         if (options.has(waitForFlag)) {
@@ -947,7 +952,7 @@ public class WalletTool {
             if (options.has(lookaheadSize)) {
                 Integer size = options.valueOf(lookaheadSize);
                 log.info("Setting keychain lookahead size to {}", size);
-                wallet.setKeychainLookaheadSize(size);
+                wallet.setKeyChainGroupLookaheadSize(size);
             }
             ECKey key;
             try {
@@ -1080,5 +1085,19 @@ public class WalletTool {
         if (chainFileName.exists())
             setup();
         System.out.println(wallet.toString(options.has("dump-privkeys"), true, true, chain));
+    }
+
+    private static void setCreationTime() {
+        DeterministicSeed seed = wallet.getActiveKeyChain().getSeed();
+        if (seed == null) {
+            System.err.println("Active chain does not have a seed.");
+            return;
+        }
+        long creationTime = getCreationTimeSeconds();
+        if (creationTime > 0)
+            System.out.println("Setting creation time to: " + Utils.dateTimeFormat(creationTime * 1000));
+        else
+            System.out.println("Clearing creation time.");
+        seed.setCreationTimeSeconds(creationTime);
     }
 }

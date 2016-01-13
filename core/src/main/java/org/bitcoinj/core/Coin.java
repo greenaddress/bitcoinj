@@ -84,9 +84,6 @@ public final class Coin implements Monetary, Comparable<Coin>, Serializable {
     public final long value;
 
     private Coin(final long satoshis) {
-        long maxSatoshis = COIN_VALUE * NetworkParameters.MAX_COINS;
-        checkArgument(-maxSatoshis <= satoshis && satoshis <= maxSatoshis,
-            "%s satoshis exceeds maximum possible quantity of Bitcoin.", satoshis);
         this.value = satoshis;
     }
 
@@ -115,7 +112,6 @@ public final class Coin implements Monetary, Comparable<Coin>, Serializable {
         checkArgument(cents >= 0);
         checkArgument(coins >= 0);
         final Coin coin = COIN.multiply(coins).add(CENT.multiply(cents));
-        checkArgument(coin.compareTo(NetworkParameters.MAX_MONEY) <= 0);
         return coin;
     }
 
@@ -140,16 +136,46 @@ public final class Coin implements Monetary, Comparable<Coin>, Serializable {
         return new Coin(LongMath.checkedAdd(this.value, value.value));
     }
 
+    /** Alias for add */
+    public Coin plus(final Coin value) {
+        return add(value);
+    }
+
     public Coin subtract(final Coin value) {
         return new Coin(LongMath.checkedSubtract(this.value, value.value));
+    }
+
+    /** Alias for subtract */
+    public Coin minus(final Coin value) {
+        return subtract(value);
     }
 
     public Coin multiply(final long factor) {
         return new Coin(LongMath.checkedMultiply(this.value, factor));
     }
 
+    /** Alias for multiply */
+    public Coin times(final long factor) {
+        return multiply(factor);
+    }
+
+    /** Alias for multiply */
+    public Coin times(final int factor) {
+        return multiply(factor);
+    }
+
     public Coin divide(final long divisor) {
         return new Coin(this.value / divisor);
+    }
+
+    /** Alias for divide */
+    public Coin div(final long divisor) {
+        return divide(divisor);
+    }
+
+    /** Alias for divide */
+    public Coin div(final int divisor) {
+        return divide(divisor);
     }
 
     public Coin[] divideAndRemainder(final long divisor) {

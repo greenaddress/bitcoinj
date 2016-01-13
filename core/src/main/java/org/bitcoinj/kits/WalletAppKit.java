@@ -116,7 +116,7 @@ public class WalletAppKit extends AbstractIdleService {
     public WalletAppKit connectToLocalHost() {
         try {
             final InetAddress localHost = InetAddress.getLocalHost();
-            return setPeerNodes(new PeerAddress(localHost, params.getPort()));
+            return setPeerNodes(new PeerAddress(params, localHost, params.getPort()));
         } catch (UnknownHostException e) {
             // Borked machine with no loopback adapter configured properly.
             throw new RuntimeException(e);
@@ -319,7 +319,7 @@ public class WalletAppKit extends AbstractIdleService {
                 for (PeerAddress addr : peerAddresses) vPeerGroup.addAddress(addr);
                 vPeerGroup.setMaxConnections(peerAddresses.length);
                 peerAddresses = null;
-            } else if (params != RegTestParams.get() && !useTor) {
+            } else if (!params.getId().equals(NetworkParameters.ID_REGTEST) && !useTor) {
                 vPeerGroup.addPeerDiscovery(discovery != null ? discovery : new DnsDiscovery(params));
             }
             vChain.addWallet(vWallet);

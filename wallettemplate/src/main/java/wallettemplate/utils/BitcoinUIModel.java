@@ -27,16 +27,14 @@ public class BitcoinUIModel {
         setWallet(wallet);
     }
 
-    public void setWallet(Wallet wallet) {
-        wallet.addEventListener(Platform::runLater,
-            new AbstractWalletEventListener() {
-                @Override
-                public void onWalletChanged(Wallet wallet) {
-                    super.onWalletChanged(wallet);
-                    update(wallet);
-                }
+    public final void setWallet(Wallet wallet) {
+        wallet.addEventListener(new AbstractWalletEventListener() {
+            @Override
+            public void onWalletChanged(Wallet wallet) {
+                super.onWalletChanged(wallet);
+                update(wallet);
             }
-        );
+        }, Platform::runLater);
         update(wallet);
     }
 

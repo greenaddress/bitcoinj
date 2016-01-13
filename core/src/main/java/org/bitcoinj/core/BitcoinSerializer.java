@@ -41,7 +41,7 @@ import static org.bitcoinj.core.Utils.*;
  * <li>Message.bitcoinSerializeToStream() needs to be properly subclassed</li>
  * </ul>
  */
-public class BitcoinSerializer implements MessageSerializer {
+public class BitcoinSerializer extends MessageSerializer {
     private static final Logger log = LoggerFactory.getLogger(BitcoinSerializer.class);
     private static final int COMMAND_LEN = 12;
 
@@ -138,7 +138,7 @@ public class BitcoinSerializer implements MessageSerializer {
         // The checksum is the first 4 bytes of a SHA256 hash of the message payload. It isn't
         // present for all messages, notably, the first one on a connection.
         //
-        // Satoshi's implementation ignores garbage before the magic header bytes. We have to do the same because
+        // Bitcoin Core ignores garbage before the magic header bytes. We have to do the same because
         // sometimes it sends us stuff that isn't part of any message.
         seekPastMagicBytes(in);
         BitcoinPacketHeader header = new BitcoinPacketHeader(in);
@@ -266,17 +266,8 @@ public class BitcoinSerializer implements MessageSerializer {
      * serialization format support.
      */
     @Override
-    public Block makeBlock(byte[] payloadBytes) throws ProtocolException {
-        return new Block(params, payloadBytes, this, payloadBytes.length);
-    }
-
-    /**
-     * Make a block from the payload. Extension point for alternative
-     * serialization format support.
-     */
-    @Override
-    public Block makeBlock(byte[] payloadBytes, int length) throws ProtocolException {
-        return new Block(params, payloadBytes, this, length);
+    public Block makeBlock(final byte[] payloadBytes, final int offset, final int length) throws ProtocolException {
+        return new Block(params, payloadBytes, offset, this, length);
     }
 
     /**
@@ -317,16 +308,6 @@ public class BitcoinSerializer implements MessageSerializer {
         if (hash != null)
             tx.setHash(Sha256Hash.wrapReversed(hash));
         return tx;
-    }
-
-    @Override
-    public Transaction makeTransaction(byte[] payloadBytes) throws ProtocolException {
-        return makeTransaction(payloadBytes, 0, payloadBytes.length, null);
-    }
-
-    @Override
-    public Transaction makeTransaction(byte[] payloadBytes, int offset) throws ProtocolException {
-        return makeTransaction(payloadBytes, offset, payloadBytes.length, null);
     }
 
     @Override
