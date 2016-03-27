@@ -2,7 +2,7 @@
 description = 'bitcoinj'
 apply plugin: 'java'
 dependencies {
-    compile group: 'com.madgag.spongycastle', name: 'core', version:'1.53.0.0'
+    compile group: 'com.madgag.spongycastle', name: 'core', version:'1.54.0.0'
     compile group: 'com.google.protobuf', name: 'protobuf-java', version:'2.6.1'
     compile group: 'com.google.guava', name: 'guava', version:'18.0'
     compile group: 'com.google.code.findbugs', name: 'jsr305', version:'2.0.1'
