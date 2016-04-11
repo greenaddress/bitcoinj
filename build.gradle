@@ -19,8 +19,8 @@ subprojects {
   configurations.all {
 }
   dependencies {
-    compile group: 'org.slf4j', name: 'slf4j-api', version:'1.7.7'
-    runtime group: 'org.slf4j', name: 'slf4j-jdk14', version:'1.7.7'
+    compile group: 'org.slf4j', name: 'slf4j-api', version:'1.7.20'
+    runtime group: 'org.slf4j', name: 'slf4j-jdk14', version:'1.7.20'
 }
 
   
